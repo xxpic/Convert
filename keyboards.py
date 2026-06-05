@@ -6,6 +6,8 @@ from aiogram.types import (
 )
 from config import CURRENCIES, CURRENCY_FLAGS, CURRENCY_NAMES
 
+DIGEST_TIMES = [8, 9, 10, 11]
+
 
 def reply_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
@@ -14,7 +16,7 @@ def reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📊 Узнать курсы")],
             [KeyboardButton(text="🌅 Утренняя сводка")],
         ],
-        resize_keyboard=False,
+        resize_keyboard=True,
         persistent=True,
     )
 
@@ -67,4 +69,21 @@ def tips_back_keyboard(amount: float, from_currency: str) -> InlineKeyboardMarku
         [
             InlineKeyboardButton(text="🔄 Ещё раз", callback_data="new"),
         ],
+    ])
+
+
+def digest_time_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        InlineKeyboardButton(text=f"{h}:00", callback_data=f"dtime:{h}")
+        for h in DIGEST_TIMES
+    ]
+    buttons.append(InlineKeyboardButton(text="❌ Отмена", callback_data="cancel"))
+    return InlineKeyboardMarkup(inline_keyboard=[
+        buttons[i:i + 4] for i in range(0, len(buttons), 4)
+    ])
+
+
+def digest_off_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Выключить сводку", callback_data="doff")],
     ])

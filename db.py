@@ -10,6 +10,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS subscriptions (
                 user_id INTEGER PRIMARY KEY,
                 chat_id INTEGER NOT NULL,
+                digest_hour INTEGER NOT NULL DEFAULT 9,
                 created_at TEXT NOT NULL
             )
         """)
@@ -28,11 +29,20 @@ async def init_db():
         await db.commit()
 
 
-async def subscribe(user_id: int, chat_id: int):
+async def subscribe(user_id: int, chat_id: int, digest_hour: int = 9):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR REPLACE INTO subscriptions (user_id, chat_id, created_at) VALUES (?, ?, ?)",
-            (user_id, chat_id, datetime.now(timezone.utc).isoformat()),
+            "INSERT OR REPLACE INTO subscriptions (user_id, chat_id, digest_hour, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, chat_id, digest_hour, datetime.now(timezone.utc).isoformat()),
+        )
+        await db.commit()
+
+
+async def update_digest_hour(user_id: int, digest_hour: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE subscriptions SET digest_hour = ? WHERE user_id = ?",
+            (digest_hour, user_id),
         )
         await db.commit()
 
@@ -52,11 +62,22 @@ async def is_subscribed(user_id: int) -> bool:
             return row is not None
 
 
+async def get_digest_hour(user_id: int) -> int | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT digest_hour FROM subscriptions WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0]
+            return None
+
+
 async def get_all_subscribers():
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT user_id, chat_id FROM subscriptions") as cursor:
+        async with db.execute("SELECT user_id, chat_id, digest_hour FROM subscriptions") as cursor:
             rows = await cursor.fetchall()
-            return [(row[0], row[1]) for row in rows]
+            return [(row[0], row[1], row[2]) for row in rows]
 
 
 async def save_rate_snapshot(rates: dict, base: str = "USD"):

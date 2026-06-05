@@ -19,6 +19,12 @@ async def update_rates_job():
 
 
 async def morning_digest_job(bot):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(ZoneInfo("Europe/Warsaw"))
+    current_hour = now.hour
+
     current_rates = api.get_rates()
     if not current_rates:
         logger.warning("No rates available for morning digest")
@@ -28,7 +34,9 @@ async def morning_digest_job(bot):
     text = formatting.format_digest(current_rates, previous_rates)
 
     subscribers = await db.get_all_subscribers()
-    for user_id, chat_id in subscribers:
+    for user_id, chat_id, digest_hour in subscribers:
+        if digest_hour != current_hour:
+            continue
         try:
             await bot.send_message(chat_id=chat_id, text=text)
         except Exception as e:
@@ -65,7 +73,7 @@ def setup_scheduler(bot) -> AsyncIOScheduler:
     scheduler.add_job(
         morning_digest_job,
         "cron",
-        hour=DIGEST_HOUR_CET,
+        hour="8,9,10,11",
         minute=0,
         id="morning_digest",
         replace_existing=True,

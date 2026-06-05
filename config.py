@@ -12,16 +12,18 @@ RATE_UPDATE_INTERVAL_MINUTES = int(os.getenv("RATE_UPDATE_INTERVAL", "60"))
 KEEPALIVE_INTERVAL_MINUTES = int(os.getenv("KEEPALIVE_INTERVAL", "5"))
 DIGEST_HOUR_CET = int(os.getenv("DIGEST_HOUR", "9"))
 
-CURRENCIES = ["BYN", "PLN", "USD", "EUR"]
+CURRENCIES = ["BYN", "PLN", "USD", "EUR", "RUB"]
 CURRENCY_FLAGS = {
     "BYN": "🇧🇾",
     "PLN": "🇵🇱",
     "USD": "🇺🇸",
     "EUR": "🇪🇺",
+    "RUB": "🇷🇺",
 }
 CURRENCY_NAMES = {
     "BYN": "BYN",
     "PLN": "PLN",
     "USD": "USD",
     "EUR": "EUR",
+    "RUB": "RUB",
 }

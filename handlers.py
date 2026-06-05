@@ -11,6 +11,8 @@ from keyboards import (
     rate_currency_keyboard,
     result_keyboard,
     tips_back_keyboard,
+    digest_time_keyboard,
+    digest_off_keyboard,
 )
 
 router = Router()
@@ -72,11 +74,17 @@ async def msg_rates(message: Message):
 async def msg_digest_toggle(message: Message):
     user_id = message.from_user.id
     if await db.is_subscribed(user_id):
-        await db.unsubscribe(user_id)
-        await message.answer("❌ Утренняя сводка <b>выключена</b>.", parse_mode="HTML")
+        hour = await db.get_digest_hour(user_id)
+        await message.answer(
+            f"✅ Утренняя сводка <b>включена</b> на {hour}:00\n\nВыберите другое время или выключите:",
+            reply_markup=digest_off_keyboard(),
+            parse_mode="HTML",
+        )
     else:
-        await db.subscribe(user_id, message.chat.id)
-        await message.answer("✅ Утренняя сводка <b>включена</b>!\n\nКаждый день в 9:00 будете получать актуальные курсы.", parse_mode="HTML")
+        await message.answer(
+            "🌅 Выберите время утренней сводки:",
+            reply_markup=digest_time_keyboard(),
+        )
 
 
 @router.message(F.text)
@@ -182,6 +190,25 @@ async def cb_back(callback: CallbackQuery):
     amount = float(parts[1])
     from_currency = parts[2]
     await _do_convert(callback, amount, from_currency)
+
+
+@router.callback_query(F.data.startswith("dtime:"))
+async def cb_digest_time(callback: CallbackQuery):
+    hour = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+    await db.subscribe(user_id, callback.message.chat.id, digest_hour=hour)
+    await callback.message.edit_text(
+        f"✅ Утренняя сводка <b>включена</b> на {hour}:00!\n\nКаждый день в {hour}:00 будете получать актуальные курсы.",
+        parse_mode="HTML",
+    )
+    await callback.answer(f"Сводка включена на {hour}:00")
+
+
+@router.callback_query(F.data == "doff")
+async def cb_digest_off(callback: CallbackQuery):
+    await db.unsubscribe(callback.from_user.id)
+    await callback.message.edit_text("❌ Утренняя сводка <b>выключена</b>.", parse_mode="HTML")
+    await callback.answer("Сводка выключена")
 
 
 @router.callback_query(F.data == "cancel")
