@@ -1,5 +1,6 @@
 import aiohttp
 import logging
+import db as _db
 from config import CURRENCIES
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,14 @@ async def fetch_rates() -> dict | None:
     except Exception as e:
         logger.error(f"Failed to fetch rates: {e}")
         return _cached_rates
+
+
+async def fetch_fresh_rates() -> dict | None:
+    rates = await fetch_rates()
+    if rates:
+        await _db.save_rate_snapshot(rates)
+        logger.info("Fresh rates fetched and snapshot saved")
+    return rates
 
 
 def get_rates() -> dict | None:

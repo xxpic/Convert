@@ -34,29 +34,30 @@ def format_conversion(amount: float, from_currency: str, converted: dict, change
     return "\n".join(lines)
 
 
-def format_tips(amount: float, from_currency: str, converted: dict) -> str:
-    flag = CURRENCY_FLAGS[from_currency]
-    name = CURRENCY_NAMES[from_currency]
-    lines = [f"💰 Чаевые от {format_amount(amount)} {name}", ""]
+def format_live_rates(from_currency: str, rates: dict, previous_rates: dict | None) -> str:
+    flag_from = CURRENCY_FLAGS[from_currency]
+    name_from = CURRENCY_NAMES[from_currency]
+    lines = [f"📊 Курс {flag_from} {name_from} (обновлено сейчас)", ""]
 
-    for pct in [10, 15, 20]:
-        tip_amount = amount * pct / 100
-        tip_line = f"{pct}% → {format_amount(tip_amount)} {name}"
-
-        conversions = []
-        for currency in CURRENCIES:
-            if currency == from_currency:
-                continue
-            value = converted.get(currency, 0) * pct / 100
-            conversions.append(f"{format_amount(value)} {CURRENCY_NAMES[currency]}")
-
-        tip_line += f" ({', '.join(conversions)})"
-        lines.append(tip_line)
+    for currency in CURRENCIES:
+        if currency == from_currency:
+            continue
+        flag = CURRENCY_FLAGS[currency]
+        name = CURRENCY_NAMES[currency]
+        cross = api.convert(1, from_currency, rates).get(currency, 0)
+        line = f"{flag} 1 {name_from} = {format_amount(cross)} {name}"
+        if previous_rates:
+            change = api.calculate_change(rates, previous_rates, from_currency, currency)
+            if change is not None:
+                if change > 0:
+                    line += f"  ↑{abs(change)}%"
+                elif change < 0:
+                    line += f"  ↓{abs(change)}%"
+                else:
+                    line += "  —"
+        lines.append(line)
 
     return "\n".join(lines)
-
-
-def format_digest(current_rates: dict, previous_rates: dict | None) -> str:
     from datetime import datetime
     from zoneinfo import ZoneInfo
     now = datetime.now(ZoneInfo("Europe/Warsaw"))

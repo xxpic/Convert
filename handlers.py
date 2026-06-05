@@ -1,20 +1,30 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 from config import CURRENCIES
 import api
 import db
 import formatting
-from keyboards import currency_keyboard, result_keyboard, tips_back_keyboard, main_keyboard
+from keyboards import (
+    reply_keyboard,
+    convert_currency_keyboard,
+    rate_currency_keyboard,
+    result_keyboard,
+    tips_back_keyboard,
+)
 
 router = Router()
 
 _user_amounts: dict[int, float] = {}
 
+REPLY_CONVERT = "💱 Конвертировать"
+REPLY_RATES = "📊 Узнать курсы"
+REPLY_DIGEST = "🌅 Утренняя сводка"
+
 START_TEXT = (
     "💱 <b>Конвертер валют</b>\n\n"
     "Быстрая конвертация между BYN, PLN, USD и EUR.\n"
-    "Нажмите кнопку ниже, чтобы начать."
+    "Используйте кнопки ниже."
 )
 
 
@@ -37,51 +47,36 @@ def parse_amount(text: str) -> float | None:
         return None
 
 
-def amount_currency_keyboard() -> InlineKeyboardMarkup:
-    rows = currency_keyboard().inline_keyboard
-    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     await db.init_db()
-    kb = await main_keyboard(message.from_user.id)
-    await message.answer(START_TEXT, reply_markup=kb, parse_mode="HTML")
+    await message.answer(START_TEXT, reply_markup=reply_keyboard(), parse_mode="HTML")
 
 
-@router.callback_query(F.data == "new")
-async def cb_new(callback: CallbackQuery):
-    await callback.message.edit_text(
+@router.message(F.text == REPLY_CONVERT)
+async def msg_convert(message: Message):
+    await message.answer(
         "📝 Введите сумму для конвертации:\n\n"
         "<i>Например: 100 или 99,50</i>",
         parse_mode="HTML",
     )
-    await callback.answer()
 
 
-@router.callback_query(F.data == "sub_on")
-async def cb_sub_on(callback: CallbackQuery):
-    await db.subscribe(callback.from_user.id, callback.message.chat.id)
-    kb = await main_keyboard(callback.from_user.id)
-    await callback.message.edit_text(
-        START_TEXT + "\n\n✅ Утренняя сводка <b>включена</b>!",
-        reply_markup=kb,
-        parse_mode="HTML",
-    )
-    await callback.answer("Утренняя сводка включена!")
+@router.message(F.text == REPLY_RATES)
+async def msg_rates(message: Message):
+    kb = rate_currency_keyboard()
+    await message.answer("Выберите базовую валюту:", reply_markup=kb)
 
 
-@router.callback_query(F.data == "sub_off")
-async def cb_sub_off(callback: CallbackQuery):
-    await db.unsubscribe(callback.from_user.id)
-    kb = await main_keyboard(callback.from_user.id)
-    await callback.message.edit_text(
-        START_TEXT + "\n\n❌ Утренняя сводка <b>выключена</b>.",
-        reply_markup=kb,
-        parse_mode="HTML",
-    )
-    await callback.answer("Утренняя сводка выключена")
+@router.message(F.text == REPLY_DIGEST)
+async def msg_digest_toggle(message: Message):
+    user_id = message.from_user.id
+    if await db.is_subscribed(user_id):
+        await db.unsubscribe(user_id)
+        await message.answer("❌ Утренняя сводка <b>выключена</b>.", parse_mode="HTML")
+    else:
+        await db.subscribe(user_id, message.chat.id)
+        await message.answer("✅ Утренняя сводка <b>включена</b>!\n\nКаждый день в 9:00 будете получать актуальные курсы.", parse_mode="HTML")
 
 
 @router.message(F.text)
@@ -91,14 +86,11 @@ async def msg_amount(message: Message):
 
     amount = parse_amount(message.text)
     if amount is None:
-        await message.answer(
-            "Введите сумму больше нуля, например: 100 или 99,50",
-            reply_markup=await main_keyboard(message.from_user.id),
-        )
+        await message.answer("Введите сумму больше нуля, например: 100 или 99,50")
         return
 
     _user_amounts[message.from_user.id] = amount
-    kb = amount_currency_keyboard()
+    kb = convert_currency_keyboard()
     await message.answer(
         f"💰 Сумма: <b>{formatting.format_amount(amount)}</b>\n\n"
         "Выберите исходную валюту:",
@@ -110,7 +102,7 @@ async def msg_amount(message: Message):
 async def _do_convert(callback: CallbackQuery, amount: float, from_currency: str):
     rates = api.get_rates()
     if not rates:
-        await callback.answer("⚠️ Курсы недоступны. Попробуйте позже.", show_alert=True)
+        await callback.answer("Курсы недоступны. Попробуйте позже.", show_alert=True)
         return
 
     converted = api.convert(amount, from_currency, rates)
@@ -131,14 +123,39 @@ async def _do_convert(callback: CallbackQuery, amount: float, from_currency: str
     await callback.answer()
 
 
+@router.callback_query(F.data == "new")
+async def cb_new(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "📝 Введите сумму для конвертации:\n\n"
+        "<i>Например: 100 или 99,50</i>",
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("cur:"))
 async def cb_currency(callback: CallbackQuery):
     from_currency = callback.data.split(":")[1]
     amount = _user_amounts.get(callback.from_user.id)
     if amount is None:
-        await callback.answer("⚠️ Сумма не найдена. Начните заново.", show_alert=True)
+        await callback.answer("Сумма не найдена. Начните заново.", show_alert=True)
         return
     await _do_convert(callback, amount, from_currency)
+
+
+@router.callback_query(F.data.startswith("rate:"))
+async def cb_rate(callback: CallbackQuery):
+    from_currency = callback.data.split(":")[1]
+
+    rates = await api.fetch_fresh_rates()
+    if not rates:
+        await callback.answer("Не удалось получить курсы. Попробуйте позже.", show_alert=True)
+        return
+
+    previous_rates = await db.get_previous_rates()
+    text = formatting.format_live_rates(from_currency, rates, previous_rates)
+    await callback.message.edit_text(text)
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("tips:"))
@@ -149,7 +166,7 @@ async def cb_tips(callback: CallbackQuery):
 
     rates = api.get_rates()
     if not rates:
-        await callback.answer("⚠️ Курсы недоступны.", show_alert=True)
+        await callback.answer("Курсы недоступны.", show_alert=True)
         return
 
     converted = api.convert(amount, from_currency, rates)
@@ -169,6 +186,5 @@ async def cb_back(callback: CallbackQuery):
 
 @router.callback_query(F.data == "cancel")
 async def cb_cancel(callback: CallbackQuery):
-    kb = await main_keyboard(callback.from_user.id)
-    await callback.message.edit_text(START_TEXT, reply_markup=kb, parse_mode="HTML")
+    await callback.message.edit_text("Отменено. Выберите действие 👇")
     await callback.answer()
